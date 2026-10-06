@@ -1,0 +1,12 @@
+# Another team's app, deployed as a SEPARATE Dokploy service.
+# It gets its own private network, so it should not see NetCo's containers.
+services:
+  payroll:
+    build: ../app
+    restart: unless-stopped
+    environment:
+      ROLE: payroll
+      COMPANY_NAME: HR team
+      CHECKS: website:3000=no,api:3000=no,db:5432=no,internet=yes
+    expose:
+      - "3000"

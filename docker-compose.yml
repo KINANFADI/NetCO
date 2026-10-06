@@ -1,0 +1,95 @@
+# NetCo: a small company network to practise on.
+#
+#   frontend network : website, api, tunnel        (normal network, has internet)
+#   backend network  : api, worker, admin, db      (internal: NO internet)
+#   adminnet network : admin                       (normal network, needed to open its door)
+#
+# Nothing here uses "ports:" except admin, and admin's door opens only on the Tailscale address.
+services:
+  website:
+    build: ./app
+    restart: unless-stopped
+    environment:
+      ROLE: website
+      COMPANY_NAME: ${COMPANY_NAME:-}
+      API_URL: ${WEBSITE_API_URL:-http://api:3000}
+      CHECKS: api:3000=yes,db:5432=no,payroll:3000=no,internet=yes
+    expose:
+      - "3000"
+    networks:
+      - frontend
+
+  api:
+    build: ./app
+    restart: unless-stopped
+    environment:
+      ROLE: api
+      COMPANY_NAME: ${COMPANY_NAME:-}
+      CHECKS: db:5432=yes,website:3000=yes,internet=yes
+    expose:
+      - "3000"
+    networks:
+      - frontend
+      - backend
+
+  worker:
+    build: ./app
+    restart: unless-stopped
+    environment:
+      ROLE: worker
+      COMPANY_NAME: ${COMPANY_NAME:-}
+      CHECKS: db:5432=yes,api:3000=yes,website:3000=no,internet=no
+    networks:
+      - backend
+
+  admin:
+    build: ./app
+    restart: unless-stopped
+    environment:
+      ROLE: admin
+      COMPANY_NAME: ${COMPANY_NAME:-}
+      CHECKS: db:5432=yes,api:3000=yes,website:3000=no,internet=yes
+    ports:
+      # Opens door ADMIN_PORT only on the Tailscale address. If TAILSCALE_IP is missing,
+      # it falls back to 127.0.0.1 (the server itself only), which is still safe.
+      - "${TAILSCALE_IP:-127.0.0.1}:${ADMIN_PORT:-8081}:3000"
+    networks:
+      - backend
+      - adminnet
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: netco
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-netco-default-pass}
+      POSTGRES_DB: netco
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netco -d netco"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  tunnel:
+    # Cloudflare "quick tunnel": dials OUT to Cloudflare and gives the website a public
+    # https://....trycloudflare.com address. No domain and no open router ports needed.
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://website:3000
+    restart: unless-stopped
+    networks:
+      - frontend
+    depends_on:
+      - website
+
+networks:
+  frontend: {}
+  backend:
+    internal: true
+  adminnet: {}
+
+volumes:
+  db-data:
