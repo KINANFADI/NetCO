@@ -1,8 +1,0 @@
-{
-  "name": "netco-inspect",
-  "version": "1.0.0",
-  "private": true,
-  "description": "Shows what a container can see on the network. No dependencies.",
-  "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=20" }
-}
