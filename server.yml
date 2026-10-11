@@ -1,0 +1,44 @@
+- hosts: dokploy
+  become: true
+  vars:
+    office_subnet: 192.168.234.0/24
+  tasks:
+    - name: Install tools
+      ansible.builtin.dnf:
+        name: [firewalld, tcpdump, conntrack-tools]
+        state: present
+
+    - name: Firewall running
+      ansible.builtin.service:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: Trust Tailscale
+      ansible.posix.firewalld:
+        zone: trusted
+        interface: tailscale0
+        permanent: true
+        immediate: true
+        state: enabled
+      notify: restart docker
+
+    - name: SSH from the office network
+      ansible.posix.firewalld:
+        zone: public
+        rich_rule: 'rule family="ipv4" source address="{{ office_subnet }}" service name="ssh" accept'
+        permanent: true
+        immediate: true
+        state: enabled
+      notify: restart docker
+
+    - name: Shared Docker network for data
+      community.docker.docker_network:
+        name: shared-data
+        internal: true
+
+  handlers:
+    - name: restart docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
